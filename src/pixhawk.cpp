@@ -18,51 +18,98 @@
 
 #include "mavlink/common/mavlink.h"
 
-int set_interface_attribs (int fd, int speed, int parity)
+// NOTE: This should come from a mavlink include file
+static const int MAVLINK_OVERHEAD = 8;
+
+int open_pixhawk()
 {
-        struct termios tty;
-        memset (&tty, 0, sizeof tty);
-        if (tcgetattr (fd, &tty) != 0)
-        {
-        	perror("error %d from tcgetattr");
-                return -1;
-        }
+	int fd;
+	char portname[] = "/dev/ttyMFD1";
 
-        /*
-        cfsetospeed (&tty, speed);
-        cfsetispeed (&tty, speed);
+	fd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
+	if (fd < 0)
+	{
+		perror ("error opening serial port");
+		return fd;
+	}
 
-        tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;     // 8-bit chars
-        // disable IGNBRK for mismatched speed tests; otherwise receive break
-        // as \000 chars
-        tty.c_iflag &= ~IGNBRK;         // disable break processing
-        tty.c_lflag = 0;                // no signaling chars, no echo,
-                                        // no canonical processing
-        tty.c_oflag = 0;                // no remapping, no delays
-        tty.c_cc[VMIN]  = 1;            // read blocks
-        tty.c_cc[VTIME] = 255;            // 0.5 seconds read timeout
+	struct termios tty;
+	memset (&tty, 0, sizeof tty);
+	if (tcgetattr (fd, &tty) != 0)
+	{
+		perror("error %d from tcgetattr");
+		return -1;
+	}
 
-        tty.c_iflag &= ~(IXON | IXOFF | IXANY); // shut off xon/xoff ctrl
+	tty.c_cflag = B57600 | CS8 | CLOCAL | CREAD;
+	tty.c_iflag = IGNPAR;
+	tty.c_oflag = 0;
+	tty.c_lflag = 0;		// non-cannonical mode
 
-        tty.c_cflag |= (CLOCAL | CREAD);// ignore modem controls,
-                                        // enable reading
-        tty.c_cflag &= ~(PARENB | PARODD);      // shut off parity
-        tty.c_cflag |= parity;
-        tty.c_cflag &= ~CSTOPB;
-        tty.c_cflag &= ~CRTSCTS;
-		*/
+	tty.c_cc[VTIME] = 0;	// block until read is ready
+	tty.c_cc[VMIN] = 1;		// wait for one character
 
-        tty.c_cflag = speed | CS8 | CLOCAL | CREAD;
-        tty.c_iflag = IGNPAR;
-        tty.c_lflag = 0;		// non-cannonical mode
+	tcflush(fd, TCIFLUSH);
+	if (tcsetattr (fd, TCSANOW, &tty) != 0)
+	{
+		perror ("error %d from tcsetattr");
+		return -1;
+	}
+	return fd;
+}
 
-        tcflush(fd, TCIFLUSH);
-        if (tcsetattr (fd, TCSANOW, &tty) != 0)
-        {
-        	perror ("error %d from tcsetattr");
-                return -1;
-        }
-        return 0;
+static void process_messages(int pixhawk, int logfile, int count)
+{
+	mavlink_message_t msg;
+	mavlink_status_t status;
+	int num_msgs = 0;
+	uint8_t input_char;
+	int length;
+
+	memset(&msg, 0, sizeof(msg));
+	memset(&status, 0, sizeof(status));
+
+	// COMMUNICATION THROUGH EXTERNAL UART PORT (XBee serial)
+
+	while(num_msgs < count)
+	{
+		length = read(pixhawk, &input_char, 1);
+		if (length == 1)
+		{
+			// Try to get a new message
+			if(mavlink_parse_char(MAVLINK_COMM_0, input_char, &msg, &status))
+			{
+				num_msgs++;
+
+				// Handle message
+				switch(msg.msgid)
+				{
+				case MAVLINK_MSG_ID_HEARTBEAT:
+					mavlink_heartbeat_t heartbeat;
+					mavlink_msg_heartbeat_decode(&msg, &heartbeat);
+					printf("%d Heartbeat: %d %d %d %d %d\n", num_msgs,
+							heartbeat.type,
+							heartbeat.autopilot,
+							heartbeat.base_mode,
+							heartbeat.system_status,
+							heartbeat.mavlink_version);
+					break;
+				default:
+					printf("%d msg: %02X %02X\n", num_msgs, msg.msgid, mavlink_msg_get_send_buffer_length(&msg)-8);
+					break;
+				}
+				// CRC is at beginning of msg, we need to print it at the end
+				write(logfile, &msg.magic,
+						mavlink_msg_get_send_buffer_length(&msg) - sizeof(msg.checksum));
+				write(logfile, &msg.checksum, sizeof(msg.checksum));
+			}
+		} else {
+			printf("Misread %d characters from pixhawk\n", length);
+		}
+
+		// Update global packet drops counter
+		//packet_drops += status.packet_rx_drop_count;
+	}
 }
 
 int main()
@@ -79,17 +126,11 @@ int main()
 	mraa::Gpio* led = new mraa::Gpio(13, true, false);
 	bool led_on = false;
 
-	char portname[] = "/dev/ttyMFD1";
-	int pixhawk = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
+	int pixhawk = open_pixhawk();
 	if (pixhawk < 0)
 	{
 		perror ("error opening serial port");
-		return 0;
-	}
-	else
-	{
-		set_interface_attribs(pixhawk, B57600, 0);  // 57600 set speed to 115,200 bps, 8n1 (no parity)
-		//set_blocking (fu, 100);                // set blocking, with 100 characters to wait for
+		return -1;
 	}
 
 	int logfile = open("/media/sdcard/pixhawk.tlog", O_RDWR | O_CREAT | O_TRUNC);
@@ -99,26 +140,15 @@ int main()
 		return -1;
 	}
 
-	char buff[200];
-	int count;
-	int written;
-	for (int ii=0; ii<500; ii++)
-	{
-		count = read(pixhawk, buff, 100);
-	    written = write(logfile, buff, count);
-	    if (written != count)
-	    {
-	    	printf("Error writing: %d %d\n", written, count);
-	    }
-		//buff[count] = 0;
-		//printf("%d: %s\n", count, buff);
+	process_messages(pixhawk, logfile, 100);
+
+	/*
 		if (led_on)
 			led->write(0);
 		else
 			led->write(1);
 		led_on = !led_on;
-
-	}
+    */
 
 	close(logfile);
 	close(pixhawk);
