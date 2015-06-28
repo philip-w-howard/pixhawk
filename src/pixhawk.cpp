@@ -19,6 +19,7 @@
 
 #include "mavlink/ardupilotmega/mavlink.h"
 
+static char portname[] = "/dev/ttyMFD1";   // ttyMFD2 is console
 static const uint8_t MY_SYSID = 0xFF;
 static const uint8_t MY_COMPID = 0xBE;
 
@@ -34,10 +35,9 @@ uint64_t microsSinceEpoch()
 	return micros;
 }
 
-int open_pixhawk()
+int open_pixhawk(char *portname)
 {
 	int fd;
-	char portname[] = "/dev/ttyMFD1";
 
 	fd = open (portname, O_RDWR | O_NOCTTY | O_SYNC);
 	if (fd < 0)
@@ -92,10 +92,29 @@ static void send_msg(int pixhawk, int logfile, mavlink_message_t *msg)
 	// Send the message to the pixhawk and to the log file
 	bytes = write(pixhawk, buf, len);
 	if (bytes != len) printf("Failed to write msg to pixhawk: %d %d\n", bytes, len);
+	else printf("Wrote %d bytes to pixhawk\n", len);
 	write(logfile, buf, len);
 	if (bytes != len) printf("Failed to write msg to log: %d %d\n", bytes, len);
 }
 
+static void send_param_request_list(int pixhawk, int logfile)
+{
+	mavlink_system_t mavlink_system;
+
+	mavlink_system.sysid = MY_SYSID;                   ///< ID this ground control
+	mavlink_system.compid = MY_COMPID;     			   ///< component sending this msg
+
+	// Initialize the required buffers
+	mavlink_message_t msg;
+
+	// Pack the message
+	// Ignoring return code
+	mavlink_msg_param_request_list_pack(
+		mavlink_system.sysid, mavlink_system.compid, &msg,
+		1,1);
+
+	send_msg(pixhawk, logfile, &msg);
+}
 
 static void send_ping(int pixhawk, int logfile)
 {
@@ -198,7 +217,7 @@ static void process_messages(int pixhawk, int logfile, int count)
 			if(mavlink_parse_char(MAVLINK_COMM_0, input_char, &msg, &status))
 			{
 				//if (num_msgs % 100 == 0) send_heartbeat(pixhawk, logfile);
-				if (num_msgs % 100 == 0) send_ping(pixhawk, logfile);
+//				if (num_msgs % 100 == 0) send_ping(pixhawk, logfile);
 
 				num_msgs++;
 
@@ -223,6 +242,8 @@ static void process_messages(int pixhawk, int logfile, int count)
 				write(logfile, &msg.magic,
 						mavlink_msg_get_send_buffer_length(&msg) - sizeof(msg.checksum));
 				write(logfile, &msg.checksum, sizeof(msg.checksum));
+
+				if (num_msgs == 1) send_param_request_list(pixhawk, logfile);
 			}
 		} else {
 			printf("Misread %d characters from pixhawk\n", length);
@@ -248,7 +269,8 @@ int main()
 //	mraa::Gpio* led = new mraa::Gpio(13, true, false);
 //	bool led_on = false;
 
-	int pixhawk = open_pixhawk();
+
+	int pixhawk = open_pixhawk(portname);
 	if (pixhawk < 0)
 	{
 		perror ("error opening serial port");
@@ -262,10 +284,11 @@ int main()
 		return -1;
 	}
 
-	send_change_operator_control(pixhawk, logfile);
-	send_change_operator_control(pixhawk, logfile);
+//	send_change_operator_control(pixhawk, logfile);
+//	send_change_operator_control(pixhawk, logfile);
 
-	/*
+	send_param_request_list(pixhawk, logfile);
+
 	int target_system = 1;
 	int target_component = 1;
 	int start_stop = 1;
@@ -274,6 +297,7 @@ int main()
 
 	send_heartbeat(pixhawk, logfile);
 
+	/*
 	req_stream_id = MAV_DATA_STREAM_EXTENDED_STATUS;
 	req_message_rate = 2;
 	send_request_data_stream(pixhawk, logfile,
@@ -313,7 +337,7 @@ int main()
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 	*/
 
-	process_messages(pixhawk, logfile, 400);
+	process_messages(pixhawk, logfile, 1000);
 
 	/*
 		if (led_on)
