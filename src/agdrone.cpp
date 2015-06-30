@@ -1,3 +1,9 @@
+/*
+ * ag.cpp
+ *
+ *  Created on: Jun 30, 2015
+ *      Author: philhow
+ */
 #include <iostream>
 #include <unistd.h>
 #include <fcntl.h>
@@ -7,6 +13,7 @@
 
 #include "pixhawk.h"
 #include "wifi.h"
+#include "mavlinkif.h"
 
 // Ports:
 // MFD2 is console
@@ -14,6 +21,49 @@
 // USB0 is USBA radio
 // ACM0 is USBA hardwire
 static char portname[] = "/dev/ttyACM0";
+
+/*
+void proc_msg(mavlink_message_t *msg, void *param)
+{
+	switch(msg.msgid)
+	{
+	case MAVLINK_MSG_ID_HEARTBEAT:
+		mavlink_heartbeat_t heartbeat;
+		mavlink_msg_heartbeat_decode(&msg, &heartbeat);
+		printf("%d Heartbeat: %d %d %d %d %d\n", num_msgs,
+				heartbeat.type,
+				heartbeat.autopilot,
+				heartbeat.base_mode,
+				heartbeat.system_status,
+				heartbeat.mavlink_version);
+		break;
+	default:
+		printf("%d msg: %02X %02X\n", num_msgs, msg.msgid, mavlink_msg_get_send_buffer_length(&msg)-8);
+		break;
+	}
+	// CRC is at beginning of msg, we need to print it at the end
+	write(logfile, &msg.magic,
+			mavlink_msg_get_send_buffer_length(&msg) - sizeof(msg.checksum));
+	write(logfile, &msg.checksum, sizeof(msg.checksum));
+
+	//				if (num_msgs == 1) send_param_request_list(pixhawk, logfile);
+}
+*/
+
+static volatile int Total_Msgs = 0;
+
+void forward_msg(mavlink_message_t *msg, void *param)
+{
+	int fd = *(int *)param;
+
+	// CRC is at beginning of msg, we need to print it at the end
+	write(fd, &msg->magic,
+			mavlink_msg_get_send_buffer_length(msg) - sizeof(msg->checksum));
+	write(fd, &msg->checksum, sizeof(msg->checksum));
+
+	Total_Msgs++;
+	printf("Total msgs: %d\n", Total_Msgs);
+}
 
 int main()
 {
@@ -27,13 +77,13 @@ int main()
 	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
 
 	printf("waiting for connection on port 2002\n");
-	int failure = open_wifi(2002);
-	if (failure) 
+	int wifi = open_wifi(2002);
+	if (wifi <= 0)
 	{
 	    printf("Failed to open wifi connection\n");
-	    return failure;
+	    return -1;
 	}
-	    
+
 //	mraa::Gpio* led = new mraa::Gpio(13, true, false);
 //	bool led_on = false;
 
@@ -52,10 +102,13 @@ int main()
 		return -1;
 	}
 
+	start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
+	start_message_thread(1, pixhawk, 1, forward_msg, &wifi);
+
 //	send_change_operator_control(pixhawk, logfile);
 //	send_change_operator_control(pixhawk, logfile);
 
-	send_param_request_list(pixhawk, logfile);
+//	send_param_request_list(pixhawk, logfile);
 
 /*
 	int target_system = 1;
@@ -107,48 +160,14 @@ int main()
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 	*/
 
-	process_messages(pixhawk, logfile, 100);
+	while (Total_Msgs < 500)
+	{}
 
-	/*
-		if (led_on)
-			led->write(0);
-		else
-			led->write(1);
-		led_on = !led_on;
-    */
-
+	close(wifi);
 	close(logfile);
 	close(pixhawk);
-	/*
-	// button connected to D4 (digital in)
-	//upm::GroveButton* button = new upm::GroveButton(4);
-
-	// led connected to D3 (digital out)
-	//upm::GroveLed* led = new upm::GroveLed(13);
-
-	// LCD connected to the default I2C bus
-	upm::Jhd1313m1* lcd = new upm::Jhd1313m1(0);
-
-	lcd->setCursor(0,0);
-	lcd->write("Hello world");
-	lcd->setCursor(1,0);
-	lcd->write(mraa_get_version());
-
-	// loop forever updating the temperature values every second
-
-	for (int ii=0; ii<10; ii++) {
-		led->write(1);
-		usleep(500000);
-		led->write(0);
-		usleep(500000);
-	}
-
-	sleep(5);
-	lcd->clear();
-	sleep(5);
-
-	lcd->setColor(0,0,0);
-*/
 	std::cout << "Exiting\n";
 	return MRAA_SUCCESS;
 }
+
+

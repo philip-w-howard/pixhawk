@@ -20,11 +20,14 @@
 							<tool id="com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler.1439421339" name="Cross GCC Compiler" superClass="com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler">
 								<option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.option.optimization.level.154141649" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" useByScannerDiscovery="false" valueType="enumerated"/>
 								<option id="gnu.c.compiler.option.debugging.level.384097803" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" useByScannerDiscovery="false" value="gnu.c.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.dialect.std.33133826" superClass="gnu.c.compiler.option.dialect.std" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
+								<option id="gnu.c.compiler.option.misc.other.5561004" superClass="gnu.c.compiler.option.misc.other" value="-c -fmessage-length=0 -pthread" valueType="string"/>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1322193478" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="com.intel.iotdevkit.ide.tool.gnu.cross.cpp.compiler.1029884023" name="Cross G++ Compiler" superClass="com.intel.iotdevkit.ide.tool.gnu.cross.cpp.compiler">
 								<option id="gnu.cpp.compiler.option.optimization.level.2008522278" name="Optimization Level" superClass="gnu.cpp.compiler.option.optimization.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
 								<option id="gnu.cpp.compiler.option.debugging.level.1161455388" name="Debug Level" superClass="gnu.cpp.compiler.option.debugging.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
+								<option id="gnu.cpp.compiler.option.other.other.757444824" superClass="gnu.cpp.compiler.option.other.other" value="-c -fmessage-length=0 -pthread" valueType="string"/>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1832054679" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="com.intel.iotdevkit.ide.tool.gnu.cross.c.linker.40856216" name="Cross GCC Linker" superClass="com.intel.iotdevkit.ide.tool.gnu.cross.c.linker">
@@ -35,6 +38,9 @@
 							</tool>
 							<tool id="com.intel.iotdevkit.ide.tool.gnu.cross.cpp.linker.1495295903" name="Cross G++ Linker" superClass="com.intel.iotdevkit.ide.tool.gnu.cross.cpp.linker">
 								<option id="com.intel.iotdevkit.ide.gnu.cpp.option.link.misc.other.2062522968" name="Miscellaneous" superClass="com.intel.iotdevkit.ide.gnu.cpp.option.link.misc.other" value="-lupm-i2clcd -lupm-grove" valueType="string"/>
+								<option id="gnu.cpp.link.option.libs.1838123024" superClass="gnu.cpp.link.option.libs" valueType="libs">
+									<listOptionValue builtIn="false" value="pthread"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.linker.input.619444113" superClass="cdt.managedbuild.tool.gnu.cpp.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -109,15 +115,6 @@
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
 		<project id="pixhawk.com.intel.iotdevkit.target.gnu.cross.exe.795340692" name="Executable" projectType="com.intel.iotdevkit.target.gnu.cross.exe"/>
 	</storageModule>
-	<storageModule moduleId="scannerConfiguration">
-		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902;com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902.;com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler.1439421339;cdt.managedbuild.tool.gnu.c.compiler.input.1322193478">
-			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="com.intel.iotdevkit.ide.config.cross.exe.release.463865476;com.intel.iotdevkit.ide.config.cross.exe.release.463865476.;com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler.2085525034;cdt.managedbuild.tool.gnu.c.compiler.input.1450230041">
-			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
 		<configuration configurationName="Debug">
@@ -128,4 +125,16 @@
 		</configuration>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902;com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902.;com.intel.iotdevkit.ide.tool.gnu.cross.cpp.compiler.1029884023;cdt.managedbuild.tool.gnu.cpp.compiler.input.1832054679">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902;com.intel.iotdevkit.ide.config.gnu.cross.exe.debug.2085222902.;com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler.1439421339;cdt.managedbuild.tool.gnu.c.compiler.input.1322193478">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="com.intel.iotdevkit.ide.config.cross.exe.release.463865476;com.intel.iotdevkit.ide.config.cross.exe.release.463865476.;com.intel.iotdevkit.ide.tool.gnu.cross.c.compiler.2085525034;cdt.managedbuild.tool.gnu.c.compiler.input.1450230041">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+	</storageModule>
 </cproject>

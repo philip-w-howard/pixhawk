@@ -17,9 +17,9 @@ int open_wifi(int portno)
 {
     int sockfd, newsockfd;
     socklen_t clilen;
-    char buffer[256];
+//    char buffer[256];
     struct sockaddr_in serv_addr, cli_addr;
-    int n;
+//    int n;
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0)
@@ -52,6 +52,8 @@ int open_wifi(int portno)
          return -1;
     }
 
+    return newsockfd;
+    /*
     bzero(buffer,256);
     n = read(newsockfd,buffer,sizeof(buffer));
     if (n < 0) perror("ERROR reading from socket");
@@ -65,6 +67,7 @@ int open_wifi(int portno)
     close(sockfd);
 
     return 0;
+    */
 }
 
 
