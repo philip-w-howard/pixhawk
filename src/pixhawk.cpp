@@ -5,21 +5,22 @@
 //#include "grove.h"
 //#include "jhd1313m1.h"
 //#include <mraa/uart.hpp>
-#include <mraa/gpio.hpp>
+//#include <mraa/gpio.hpp>
 
-#include <climits>
+//#include <climits>
 #include <iostream>
-#include <sstream>
+//#include <sstream>
 #include <unistd.h>
-#include <sys/stat.h>
+#include <stdio.h>
+//#include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <string.h>
 
 #include "mavlink/ardupilotmega/mavlink.h"
+#include "pixhawk.h"
 
-static char portname[] = "/dev/ttyMFD1";   // ttyMFD2 is console
 static const uint8_t MY_SYSID = 0xFF;
 static const uint8_t MY_COMPID = 0xBE;
 
@@ -97,7 +98,7 @@ static void send_msg(int pixhawk, int logfile, mavlink_message_t *msg)
 	if (bytes != len) printf("Failed to write msg to log: %d %d\n", bytes, len);
 }
 
-static void send_param_request_list(int pixhawk, int logfile)
+void send_param_request_list(int pixhawk, int logfile)
 {
 	mavlink_system_t mavlink_system;
 
@@ -116,7 +117,7 @@ static void send_param_request_list(int pixhawk, int logfile)
 	send_msg(pixhawk, logfile, &msg);
 }
 
-static void send_ping(int pixhawk, int logfile)
+void send_ping(int pixhawk, int logfile)
 {
     static uint32_t seq = 0;
 
@@ -134,7 +135,7 @@ static void send_ping(int pixhawk, int logfile)
 	send_msg(pixhawk, logfile, &msg);
 }
 
-static void send_change_operator_control(int pixhawk, int logfile)
+void send_change_operator_control(int pixhawk, int logfile)
 {
  	// Initialize the required buffers
 	mavlink_message_t msg;
@@ -150,7 +151,7 @@ static void send_change_operator_control(int pixhawk, int logfile)
 	send_msg(pixhawk, logfile, &msg);
 }
 
-static void send_heartbeat(int pixhawk, int logfile)
+void send_heartbeat(int pixhawk, int logfile)
 {
 	mavlink_system_t mavlink_system;
 
@@ -174,7 +175,7 @@ static void send_heartbeat(int pixhawk, int logfile)
 	send_msg(pixhawk, logfile, &msg);
 }
 
-static void send_request_data_stream(int pixhawk, int logfile,
+void send_request_data_stream(int pixhawk, int logfile,
 		uint8_t target_system, uint8_t target_component, uint8_t req_stream_id,
 		uint16_t req_message_rate, uint8_t start_stop)
 {
@@ -195,7 +196,7 @@ static void send_request_data_stream(int pixhawk, int logfile,
 	send_msg(pixhawk, logfile, &msg);
 }
 
-static void process_messages(int pixhawk, int logfile, int count)
+void process_messages(int pixhawk, int logfile, int count)
 {
 	mavlink_message_t msg;
 	mavlink_status_t status;
@@ -243,7 +244,7 @@ static void process_messages(int pixhawk, int logfile, int count)
 						mavlink_msg_get_send_buffer_length(&msg) - sizeof(msg.checksum));
 				write(logfile, &msg.checksum, sizeof(msg.checksum));
 
-				if (num_msgs == 1) send_param_request_list(pixhawk, logfile);
+//				if (num_msgs == 1) send_param_request_list(pixhawk, logfile);
 			}
 		} else {
 			printf("Misread %d characters from pixhawk\n", length);
@@ -255,130 +256,3 @@ static void process_messages(int pixhawk, int logfile, int count)
 }
 
 
-int main()
-{
-	// check that we are running on Galileo or Edison
-	mraa_platform_t platform = mraa_get_platform_type();
-	if (platform != MRAA_INTEL_EDISON_FAB_C) {
-		std::cerr << "Unsupported platform, exiting" << std::endl;
-		return MRAA_ERROR_INVALID_PLATFORM;
-	}
-
-	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
-
-//	mraa::Gpio* led = new mraa::Gpio(13, true, false);
-//	bool led_on = false;
-
-
-	int pixhawk = open_pixhawk(portname);
-	if (pixhawk < 0)
-	{
-		perror ("error opening serial port");
-		return -1;
-	}
-
-	int logfile = open("/media/sdcard/pixhawk.tlog", O_RDWR | O_CREAT | O_TRUNC);
-	if (logfile < 0)
-	{
-		perror("Unable to open log file");
-		return -1;
-	}
-
-//	send_change_operator_control(pixhawk, logfile);
-//	send_change_operator_control(pixhawk, logfile);
-
-	send_param_request_list(pixhawk, logfile);
-
-	int target_system = 1;
-	int target_component = 1;
-	int start_stop = 1;
-	int req_stream_id = MAV_DATA_STREAM_EXTENDED_STATUS;
-	int req_message_rate = 2;
-
-	send_heartbeat(pixhawk, logfile);
-
-	/*
-	req_stream_id = MAV_DATA_STREAM_EXTENDED_STATUS;
-	req_message_rate = 2;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	req_stream_id = MAV_DATA_STREAM_POSITION;
-	req_message_rate = 3;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	req_stream_id = MAV_DATA_STREAM_EXTRA1;
-	req_message_rate = 10;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	req_stream_id = MAV_DATA_STREAM_EXTRA3;
-	req_message_rate = 2;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	req_stream_id = MAV_DATA_STREAM_RAW_SENSORS;
-	req_message_rate = 2;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	req_stream_id = MAV_DATA_STREAM_RC_CHANNELS;
-	req_message_rate = 10;
-	start_stop = 0;
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	send_request_data_stream(pixhawk, logfile,
-			target_system, target_component, req_stream_id, req_message_rate, start_stop);
-	*/
-
-	process_messages(pixhawk, logfile, 1000);
-
-	/*
-		if (led_on)
-			led->write(0);
-		else
-			led->write(1);
-		led_on = !led_on;
-    */
-
-	close(logfile);
-	close(pixhawk);
-	/*
-	// button connected to D4 (digital in)
-	//upm::GroveButton* button = new upm::GroveButton(4);
-
-	// led connected to D3 (digital out)
-	//upm::GroveLed* led = new upm::GroveLed(13);
-
-	// LCD connected to the default I2C bus
-	upm::Jhd1313m1* lcd = new upm::Jhd1313m1(0);
-
-	lcd->setCursor(0,0);
-	lcd->write("Hello world");
-	lcd->setCursor(1,0);
-	lcd->write(mraa_get_version());
-
-	// loop forever updating the temperature values every second
-
-	for (int ii=0; ii<10; ii++) {
-		led->write(1);
-		usleep(500000);
-		led->write(0);
-		usleep(500000);
-	}
-
-	sleep(5);
-	lcd->clear();
-	sleep(5);
-
-	lcd->setColor(0,0,0);
-*/
-	std::cout << "Exiting\n";
-	return MRAA_SUCCESS;
-}
