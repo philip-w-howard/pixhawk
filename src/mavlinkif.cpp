@@ -16,6 +16,21 @@
 static const uint8_t MY_SYSID = 0xFF;
 static const uint8_t MY_COMPID = 0xBE;
 
+static inline void byte_swap_8(void *dst, void *src)
+{
+	char *c_dst = (char *)dst;
+	char *c_src = (char *)src;
+
+	c_dst[0] = c_src[7];
+	c_dst[1] = c_src[6];
+	c_dst[2] = c_src[5];
+	c_dst[3] = c_src[4];
+	c_dst[4] = c_src[3];
+	c_dst[5] = c_src[2];
+	c_dst[6] = c_src[1];
+	c_dst[7] = c_src[0];
+}
+
 static uint64_t microsSinceEpoch()
 {
 
@@ -226,4 +241,49 @@ void stop_message_thread(void *p)
 	params->stop = true;
 	pthread_join(params->thread_id, NULL);
 	free(params);
+}
+
+void write_tlog(int fd, mavlink_message_t *msg)
+{
+	struct timeval  tv;
+	if (gettimeofday(&tv, NULL) != 0)
+	{
+		perror("Unable to get time of day\n");
+	}
+
+	uint64_t time_in_mill;
+
+	time_in_mill = tv.tv_sec;
+	time_in_mill *= 1000000;
+	time_in_mill += tv.tv_usec;
+
+	uint8_t timestamp[sizeof(uint64_t)];
+
+	memcpy(timestamp, &time_in_mill, 8);
+
+	printf("Timestamp: ");
+	for (int ii=0; ii<8; ii++)
+	{
+		printf("%02X ", timestamp[ii]);
+	}
+	printf("\n");
+
+	printf("Time: %ld %ld %04lX %04lX\n", tv.tv_sec, tv.tv_usec, tv.tv_sec, tv.tv_usec);
+
+	byte_swap_8(timestamp, &time_in_mill);
+
+	write(fd, timestamp, sizeof(timestamp));
+
+	printf("Timestamp: ");
+	for (int ii=0; ii<8; ii++)
+	{
+		printf("%02X ", timestamp[ii]);
+	}
+	printf("\n");
+
+	// CRC is at beginning of msg, we need to print it at the end
+	write(fd, &msg->magic,
+			mavlink_msg_get_send_buffer_length(msg) - sizeof(msg->checksum));
+	write(fd, &msg->checksum, sizeof(msg->checksum));
+
 }

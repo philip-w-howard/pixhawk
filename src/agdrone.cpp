@@ -56,10 +56,7 @@ void forward_msg(mavlink_message_t *msg, void *param)
 {
 	int fd = *(int *)param;
 
-	// CRC is at beginning of msg, we need to print it at the end
-	write(fd, &msg->magic,
-			mavlink_msg_get_send_buffer_length(msg) - sizeof(msg->checksum));
-	write(fd, &msg->checksum, sizeof(msg->checksum));
+	write_tlog(fd, msg);
 
 	Total_Msgs++;
 	printf("Total msgs: %d\n", Total_Msgs);
@@ -76,6 +73,7 @@ int main()
 
 	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
 
+	/*
 	printf("waiting for connection on port 2002\n");
 	int wifi = open_wifi(2002);
 	if (wifi <= 0)
@@ -83,6 +81,7 @@ int main()
 	    printf("Failed to open wifi connection\n");
 	    return -1;
 	}
+	*/
 
 //	mraa::Gpio* led = new mraa::Gpio(13, true, false);
 //	bool led_on = false;
@@ -102,8 +101,8 @@ int main()
 		return -1;
 	}
 
-	start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
-	start_message_thread(1, pixhawk, 1, forward_msg, &wifi);
+	//start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
+	start_message_thread(1, pixhawk, 1, forward_msg, &logfile);
 
 //	send_change_operator_control(pixhawk, logfile);
 //	send_change_operator_control(pixhawk, logfile);
@@ -118,7 +117,7 @@ int main()
 	int req_message_rate = 2;
 */
 
-	send_heartbeat(pixhawk, logfile);
+	//send_heartbeat(pixhawk, logfile);
 
 	/*
 	req_stream_id = MAV_DATA_STREAM_EXTENDED_STATUS;
@@ -163,7 +162,7 @@ int main()
 	while (Total_Msgs < 500)
 	{}
 
-	close(wifi);
+	//close(wifi);
 	close(logfile);
 	close(pixhawk);
 	std::cout << "Exiting\n";

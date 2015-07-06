@@ -23,6 +23,6 @@ void *start_message_thread(int mav_channel, int fd, int bytes_at_time,
 
 void stop_message_thread(void *p);
 
-
+void write_tlog(int fd, mavlink_message_t *msg);
 
 #endif /* MAVLINKIF_H_ */
