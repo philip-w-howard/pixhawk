@@ -8,7 +8,17 @@
 #ifndef PIXHAWK_H_
 #define PIXHAWK_H_
 
+#include "mavlink/ardupilotmega/mavlink.h"
+
+typedef struct pixhawk_proc_msg_s
+{
+	int pixhawk_fd;
+	int log_fd;
+	int num_msgs;
+} pix_proc_msg_t;
+
 int open_pixhawk(char *portname);
 
+void pixhawk_proc_msg(mavlink_message_t *msg, void *param);
 
 #endif /* PIXHAWK_H_ */

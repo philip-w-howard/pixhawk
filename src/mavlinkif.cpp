@@ -44,7 +44,7 @@ static uint64_t microsSinceEpoch()
 }
 
 
-static void send_msg(int pixhawk, int logfile, mavlink_message_t *msg)
+static void send_msg(int pixhawk, mavlink_message_t *msg)
 {
 	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 	int bytes;
@@ -56,11 +56,10 @@ static void send_msg(int pixhawk, int logfile, mavlink_message_t *msg)
 	bytes = write(pixhawk, buf, len);
 	if (bytes != len) printf("Failed to write msg to pixhawk: %d %d\n", bytes, len);
 	else printf("Wrote %d bytes to pixhawk\n", len);
-	write(logfile, buf, len);
 	if (bytes != len) printf("Failed to write msg to log: %d %d\n", bytes, len);
 }
 
-void send_param_request_list(int pixhawk, int logfile)
+void send_param_request_list(int pixhawk)
 {
 	mavlink_system_t mavlink_system;
 
@@ -76,10 +75,10 @@ void send_param_request_list(int pixhawk, int logfile)
 		mavlink_system.sysid, mavlink_system.compid, &msg,
 		1,1);
 
-	send_msg(pixhawk, logfile, &msg);
+	send_msg(pixhawk, &msg);
 }
 
-void send_ping(int pixhawk, int logfile)
+void send_ping(int pixhawk)
 {
     static uint32_t seq = 0;
 
@@ -94,10 +93,10 @@ void send_ping(int pixhawk, int logfile)
 	mavlink_msg_ping_pack(MY_SYSID, MY_COMPID, &msg,
 			microsSinceEpoch(), seq, target_system, target_component);
 
-	send_msg(pixhawk, logfile, &msg);
+	send_msg(pixhawk, &msg);
 }
 
-void send_change_operator_control(int pixhawk, int logfile)
+void send_change_operator_control(int pixhawk)
 {
  	// Initialize the required buffers
 	mavlink_message_t msg;
@@ -110,10 +109,10 @@ void send_change_operator_control(int pixhawk, int logfile)
     mavlink_msg_change_operator_control_pack(MY_SYSID, MY_COMPID, &msg,
     			target_system, release_control, version, "");
 
-	send_msg(pixhawk, logfile, &msg);
+	send_msg(pixhawk, &msg);
 }
 
-void send_heartbeat(int pixhawk, int logfile)
+void send_heartbeat(int pixhawk)
 {
 	mavlink_system_t mavlink_system;
 
@@ -134,10 +133,10 @@ void send_heartbeat(int pixhawk, int logfile)
 	// Pack the message
 	mavlink_msg_heartbeat_pack(mavlink_system.sysid, mavlink_system.compid, &msg, system_type, autopilot_type, system_mode, custom_mode, system_state);
 
-	send_msg(pixhawk, logfile, &msg);
+	send_msg(pixhawk, &msg);
 }
 
-void send_request_data_stream(int pixhawk, int logfile,
+void send_request_data_stream(int pixhawk,
 		uint8_t target_system, uint8_t target_component, uint8_t req_stream_id,
 		uint16_t req_message_rate, uint8_t start_stop)
 {
@@ -155,7 +154,7 @@ void send_request_data_stream(int pixhawk, int logfile,
 			mavlink_system.sysid, mavlink_system.compid, &msg,
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 
-	send_msg(pixhawk, logfile, &msg);
+	send_msg(pixhawk, &msg);
 }
 
 typedef struct
@@ -259,6 +258,7 @@ void write_tlog(int fd, mavlink_message_t *msg)
 
 	uint8_t timestamp[sizeof(uint64_t)];
 
+	/*
 	memcpy(timestamp, &time_in_mill, 8);
 
 	printf("Timestamp: ");
@@ -269,21 +269,31 @@ void write_tlog(int fd, mavlink_message_t *msg)
 	printf("\n");
 
 	printf("Time: %ld %ld %04lX %04lX\n", tv.tv_sec, tv.tv_usec, tv.tv_sec, tv.tv_usec);
+    */
 
 	byte_swap_8(timestamp, &time_in_mill);
 
 	write(fd, timestamp, sizeof(timestamp));
 
+	/*
 	printf("Timestamp: ");
 	for (int ii=0; ii<8; ii++)
 	{
 		printf("%02X ", timestamp[ii]);
 	}
 	printf("\n");
+    */
+
+	// Copy the message to the send buffer
+	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+	uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
+
+	for (int ii=0; ii<6; ii++)
+	{
+		printf("%2X ", buf[ii]);
+	}
+	printf("\n");
 
 	// CRC is at beginning of msg, we need to print it at the end
-	write(fd, &msg->magic,
-			mavlink_msg_get_send_buffer_length(msg) - sizeof(msg->checksum));
-	write(fd, &msg->checksum, sizeof(msg->checksum));
-
+	write(fd, buf, len);
 }

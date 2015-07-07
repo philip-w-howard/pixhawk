@@ -65,4 +65,21 @@ int open_pixhawk(char *portname)
 	return fd;
 }
 
+extern volatile int Total_Msgs;
+
+void pixhawk_proc_msg(mavlink_message_t *msg, void *param)
+{
+	pix_proc_msg_t *pix_msg = (pix_proc_msg_t *)param;
+
+	write_tlog(pix_msg->log_fd, msg);
+	pix_msg->num_msgs++;
+	if (pix_msg->num_msgs % 200 == 2)
+	{
+		send_param_request_list(pix_msg->pixhawk_fd);
+
+	}
+
+	Total_Msgs++;
+	printf("Total msgs: %d\n", Total_Msgs);
+}
 

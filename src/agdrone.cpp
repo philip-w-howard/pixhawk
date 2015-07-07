@@ -50,7 +50,7 @@ void proc_msg(mavlink_message_t *msg, void *param)
 }
 */
 
-static volatile int Total_Msgs = 0;
+volatile int Total_Msgs = 0;
 
 void forward_msg(mavlink_message_t *msg, void *param)
 {
@@ -101,8 +101,13 @@ int main()
 		return -1;
 	}
 
+	pix_proc_msg_t pix_msg;
+	pix_msg.pixhawk_fd = pixhawk;
+	pix_msg.log_fd = logfile;
+	pix_msg.num_msgs = 0;
+
 	//start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
-	start_message_thread(1, pixhawk, 1, forward_msg, &logfile);
+	start_message_thread(1, pixhawk, 1, pixhawk_proc_msg, &pix_msg);
 
 //	send_change_operator_control(pixhawk, logfile);
 //	send_change_operator_control(pixhawk, logfile);
