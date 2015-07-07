@@ -9,11 +9,13 @@
 #define PIXHAWK_H_
 
 #include "mavlink/ardupilotmega/mavlink.h"
+#include "queue.h"
 
 typedef struct pixhawk_proc_msg_s
 {
 	int pixhawk_fd;
 	int log_fd;
+	queue_t *send_q;
 	int num_msgs;
 } pix_proc_msg_t;
 

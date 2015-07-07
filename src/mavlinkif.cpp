@@ -9,9 +9,11 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <assert.h>
 
 #include "mavlink/ardupilotmega/mavlink.h"
 #include "mavlinkif.h"
+#include "queue.h"
 
 static const uint8_t MY_SYSID = 0xFF;
 static const uint8_t MY_COMPID = 0xBE;
@@ -43,8 +45,7 @@ static uint64_t microsSinceEpoch()
 	return micros;
 }
 
-
-static void send_msg(int pixhawk, mavlink_message_t *msg)
+void send_msg(int fd, mavlink_message_t *msg)
 {
 	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 	int bytes;
@@ -53,32 +54,34 @@ static void send_msg(int pixhawk, mavlink_message_t *msg)
 	uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
 
 	// Send the message to the pixhawk and to the log file
-	bytes = write(pixhawk, buf, len);
-	if (bytes != len) printf("Failed to write msg to pixhawk: %d %d\n", bytes, len);
-	else printf("Wrote %d bytes to pixhawk\n", len);
-	if (bytes != len) printf("Failed to write msg to log: %d %d\n", bytes, len);
+	bytes = write(fd, buf, len);
+	if (bytes != len) printf("Failed to write msg: %d %d %d\n", fd, bytes, len);
 }
 
-void send_param_request_list(int pixhawk)
+static void queue_msg(queue_t *dest, mavlink_message_t *msg)
 {
-	mavlink_system_t mavlink_system;
+	mavlink_message_t *msg_copy;
 
-	mavlink_system.sysid = MY_SYSID;                   ///< ID this ground control
-	mavlink_system.compid = MY_COMPID;     			   ///< component sending this msg
+	msg_copy = (mavlink_message_t *)malloc(sizeof(mavlink_message_t));
+	assert(msg_copy != NULL);
 
+	memcpy(msg_copy, msg, sizeof(mavlink_message_t));
+	queue_insert(dest, msg_copy);
+
+}
+void send_param_request_list(queue_t *dest, uint8_t sysid, uint8_t compid)
+{
 	// Initialize the required buffers
 	mavlink_message_t msg;
 
 	// Pack the message
 	// Ignoring return code
-	mavlink_msg_param_request_list_pack(
-		mavlink_system.sysid, mavlink_system.compid, &msg,
-		1,1);
+	mavlink_msg_param_request_list_pack(sysid, compid, &msg, 1,1);
 
-	send_msg(pixhawk, &msg);
+	queue_msg(dest, &msg);
 }
 
-void send_ping(int pixhawk)
+void send_ping(queue_t *dest, uint8_t sysid, uint8_t compid)
 {
     static uint32_t seq = 0;
 
@@ -90,35 +93,14 @@ void send_ping(int pixhawk)
     seq++;
 
 		// Pack the message
-	mavlink_msg_ping_pack(MY_SYSID, MY_COMPID, &msg,
+	mavlink_msg_ping_pack(sysid, compid, &msg,
 			microsSinceEpoch(), seq, target_system, target_component);
 
-	send_msg(pixhawk, &msg);
+	queue_msg(dest, &msg);
 }
 
-void send_change_operator_control(int pixhawk)
+void send_heartbeat(queue_t *dest, uint8_t sysid, uint8_t compid)
 {
- 	// Initialize the required buffers
-	mavlink_message_t msg;
-
-    uint8_t target_system = 1;
-    uint8_t release_control = 0;		// zero means request control
-    uint8_t version = 0;
-
-		// Pack the message
-    mavlink_msg_change_operator_control_pack(MY_SYSID, MY_COMPID, &msg,
-    			target_system, release_control, version, "");
-
-	send_msg(pixhawk, &msg);
-}
-
-void send_heartbeat(int pixhawk)
-{
-	mavlink_system_t mavlink_system;
-
-	mavlink_system.sysid = MY_SYSID;                   ///< ID this ground control
-	mavlink_system.compid = MY_COMPID;     			   ///< component sending this msg
-
 	// Define the system type, in this case an airplane
 	uint8_t system_type = MAV_TYPE_GCS;
 	uint8_t autopilot_type = MAV_AUTOPILOT_INVALID;
@@ -131,46 +113,41 @@ void send_heartbeat(int pixhawk)
 	mavlink_message_t msg;
 
 	// Pack the message
-	mavlink_msg_heartbeat_pack(mavlink_system.sysid, mavlink_system.compid, &msg, system_type, autopilot_type, system_mode, custom_mode, system_state);
+	mavlink_msg_heartbeat_pack(sysid, compid, &msg, system_type, autopilot_type, system_mode, custom_mode, system_state);
 
-	send_msg(pixhawk, &msg);
+	queue_msg(dest, &msg);
 }
 
-void send_request_data_stream(int pixhawk,
+void send_request_data_stream(queue_t *dest, uint8_t sysid, uint8_t compid,
 		uint8_t target_system, uint8_t target_component, uint8_t req_stream_id,
 		uint16_t req_message_rate, uint8_t start_stop)
 {
-	mavlink_system_t mavlink_system;
-
-	mavlink_system.sysid = MY_SYSID;                   ///< ID this ground control
-	mavlink_system.compid = MY_COMPID;     			   ///< component sending this msg
-
 	// Initialize the required buffers
 	mavlink_message_t msg;
 
 	// Pack the message
 	// Ignoring return code
-	mavlink_msg_request_data_stream_pack(
-			mavlink_system.sysid, mavlink_system.compid, &msg,
+	mavlink_msg_request_data_stream_pack(sysid, compid, &msg,
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 
-	send_msg(pixhawk, &msg);
+	queue_msg(dest, &msg);
 }
 
 typedef struct
 {
 	int mav_channel;
 	int fd;
+	queue_t *queue;
 	int bytes_at_time;
 	void (*proc_msg)(mavlink_message_t *msg, void *param);
 	void *proc_param;
 	pthread_t thread_id;
 	bool stop;
-} read_params_t;
+} msg_params_t;
 
 static void *read_msgs(void *p)
 {
-	read_params_t *params = (read_params_t *)p;
+	msg_params_t *params = (msg_params_t *)p;
 
 	mavlink_message_t msg;
 	mavlink_status_t status;
@@ -202,22 +179,48 @@ static void *read_msgs(void *p)
 	return NULL;
 }
 
-void *start_message_thread(int mav_channel, int fd, int bytes_at_time,
+static void *write_msgs(void *p)
+{
+	msg_params_t *params = (msg_params_t *)p;
+
+	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+	uint16_t len;
+	mavlink_message_t *msg;
+
+	while(queue_is_open(params->queue))
+	{
+		msg = (mavlink_message_t *)queue_remove(params->queue);
+		if (msg != NULL)
+		{
+			// Copy the message to the send buffer
+			len = mavlink_msg_to_send_buffer(buf, msg);
+
+			// write the msg to the log file
+			write(params->fd, buf, len);
+		}
+	}
+
+	return NULL;
+}
+
+void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
 		void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param)
 {
-	read_params_t *params;
+	msg_params_t *params;
 
-	params = (read_params_t *)malloc(sizeof(read_params_t));
+	params = (msg_params_t *)malloc(sizeof(msg_params_t));
 	if (params == NULL)
 	{
 		perror("Unable to malloc read_params");
 		return NULL;
 	}
 
-	params->mav_channel 		= mav_channel;
+	memset(params, 0, sizeof(msg_params_t));
+
+	params->mav_channel 	= mav_channel;
 	params->fd     			= fd;
 	params->bytes_at_time	= bytes_at_time;
-	params->proc_msg			= proc_msg;
+	params->proc_msg		= proc_msg;
 	params->proc_param		= proc_param;
 	params->stop 			= false;
 
@@ -233,56 +236,70 @@ void *start_message_thread(int mav_channel, int fd, int bytes_at_time,
 	return params;
 }
 
+void *start_message_write_thread(int fd, queue_t *queue)
+{
+	msg_params_t *params;
+
+	params = (msg_params_t *)malloc(sizeof(msg_params_t));
+	if (params == NULL)
+	{
+		perror("Unable to malloc read_params");
+		return NULL;
+	}
+
+	memset(params, 0, sizeof(msg_params_t));
+
+	params->fd     			= fd;
+	params->queue			= queue;
+
+	int result = pthread_create(&params->thread_id, NULL, write_msgs, params);
+
+	if (result != 0)
+	{
+		perror("Unable to start mavlink write thread");
+		free(params);
+		return NULL;
+	}
+
+	return params;
+}
+
 void stop_message_thread(void *p)
 {
-	read_params_t *params = (read_params_t *)p;
+	msg_params_t *params = (msg_params_t *)p;
 
 	params->stop = true;
+	if (params->queue != NULL) queue_mark_closed(params->queue);
+
 	pthread_join(params->thread_id, NULL);
 	free(params);
 }
 
 void write_tlog(int fd, mavlink_message_t *msg)
 {
+	static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+
 	struct timeval  tv;
+	uint64_t time_in_mill;
+	uint8_t timestamp[sizeof(uint64_t)];
+
+	pthread_mutex_lock(&log_lock);
+
 	if (gettimeofday(&tv, NULL) != 0)
 	{
 		perror("Unable to get time of day\n");
 	}
 
-	uint64_t time_in_mill;
-
+	// convert to time in microseconds
 	time_in_mill = tv.tv_sec;
 	time_in_mill *= 1000000;
 	time_in_mill += tv.tv_usec;
 
-	uint8_t timestamp[sizeof(uint64_t)];
-
-	/*
-	memcpy(timestamp, &time_in_mill, 8);
-
-	printf("Timestamp: ");
-	for (int ii=0; ii<8; ii++)
-	{
-		printf("%02X ", timestamp[ii]);
-	}
-	printf("\n");
-
-	printf("Time: %ld %ld %04lX %04lX\n", tv.tv_sec, tv.tv_usec, tv.tv_sec, tv.tv_usec);
-    */
-
+	// get network byte order
 	byte_swap_8(timestamp, &time_in_mill);
 
+	// write timestamp
 	write(fd, timestamp, sizeof(timestamp));
-
-	/*
-	printf("Timestamp: ");
-	for (int ii=0; ii<8; ii++)
-	{
-		printf("%02X ", timestamp[ii]);
-	}
-	printf("\n");
-    */
 
 	// Copy the message to the send buffer
 	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
@@ -294,6 +311,8 @@ void write_tlog(int fd, mavlink_message_t *msg)
 	}
 	printf("\n");
 
-	// CRC is at beginning of msg, we need to print it at the end
+	// write the msg to the log file
 	write(fd, buf, len);
+
+	pthread_mutex_unlock(&log_lock);
 }

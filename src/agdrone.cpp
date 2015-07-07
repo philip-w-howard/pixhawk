@@ -101,13 +101,22 @@ int main()
 		return -1;
 	}
 
+	queue_t *pixhawk_q = queue_create();
+	if (pixhawk_q == NULL)
+	{
+		perror("Error opening pixhawk queue");
+		return -1;
+	}
+
 	pix_proc_msg_t pix_msg;
 	pix_msg.pixhawk_fd = pixhawk;
 	pix_msg.log_fd = logfile;
+	pix_msg.send_q = pixhawk_q;
 	pix_msg.num_msgs = 0;
 
 	//start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
-	start_message_thread(1, pixhawk, 1, pixhawk_proc_msg, &pix_msg);
+	start_message_read_thread(1, pixhawk, 1, pixhawk_proc_msg, &pix_msg);
+	start_message_write_thread(pixhawk, pixhawk_q);
 
 //	send_change_operator_control(pixhawk, logfile);
 //	send_change_operator_control(pixhawk, logfile);
