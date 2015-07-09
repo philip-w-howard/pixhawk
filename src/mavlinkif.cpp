@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <errno.h>
 #include <assert.h>
 
 #include "mavlink/ardupilotmega/mavlink.h"
@@ -58,7 +59,7 @@ void send_msg(int fd, mavlink_message_t *msg)
 	if (bytes != len) printf("Failed to write msg: %d %d %d\n", fd, bytes, len);
 }
 
-static void queue_msg(queue_t *dest, mavlink_message_t *msg)
+void queue_msg(queue_t *dest, mavlink_message_t *msg)
 {
 	mavlink_message_t *msg_copy;
 
@@ -139,8 +140,8 @@ typedef struct
 	int fd;
 	queue_t *queue;
 	int bytes_at_time;
-	void (*proc_msg)(mavlink_message_t *msg, void *param);
-	void *proc_param;
+	//void (*proc_msg)(mavlink_message_t *msg, void *param);
+	//void *proc_param;
 	pthread_t thread_id;
 	bool stop;
 } msg_params_t;
@@ -158,9 +159,13 @@ static void *read_msgs(void *p)
 	memset(&msg, 0, sizeof(msg));
 	memset(&status, 0, sizeof(status));
 
+	printf("Reading data on %d\n", params->fd);
+
 	while(!params->stop)
 	{
 		length = read(params->fd, input_buff, params->bytes_at_time);
+		if (length < 0 && errno != EINTR) break;
+
 		for (int ii=0; ii<length; ii++)
 		{
 			// Try to get a new message
@@ -168,13 +173,17 @@ static void *read_msgs(void *p)
 			{
 				num_msgs++;
 
-				params->proc_msg(&msg, params->proc_param);
+				queue_msg(params->queue, &msg);
+				//printf("Read msg from %d\n", params->fd);
+				//params->proc_msg(&msg, params->proc_param);
 			}
 		}
 
 		// Update global packet drops counter
 		//packet_drops += status.packet_rx_drop_count;
 	}
+
+	printf("Done reading from %d\n", params->fd);
 
 	return NULL;
 }
@@ -185,7 +194,11 @@ static void *write_msgs(void *p)
 
 	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 	uint16_t len;
+	int size;
+
 	mavlink_message_t *msg;
+
+	printf("Writing data to %d\n", params->fd);
 
 	while(queue_is_open(params->queue))
 	{
@@ -194,17 +207,33 @@ static void *write_msgs(void *p)
 		{
 			// Copy the message to the send buffer
 			len = mavlink_msg_to_send_buffer(buf, msg);
+			free(msg);
 
 			// write the msg to the log file
-			write(params->fd, buf, len);
+			//printf("writing to %d %d\n", params->fd, len);
+			size = write(params->fd, buf, len);
+			if (size < 0)
+			{
+				if (errno == EPIPE)
+				{
+					printf("Pipe closed on other end %d\n", params->fd);
+					break;
+				} else {
+					perror("Error writing message");
+				}
+			}
 		}
 	}
+
+	printf("Done writing data to %d\n", params->fd);
+	close(params->fd);
 
 	return NULL;
 }
 
 void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
-		void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param)
+		queue_t *queue)
+//		void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param)
 {
 	msg_params_t *params;
 
@@ -220,8 +249,9 @@ void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
 	params->mav_channel 	= mav_channel;
 	params->fd     			= fd;
 	params->bytes_at_time	= bytes_at_time;
-	params->proc_msg		= proc_msg;
-	params->proc_param		= proc_param;
+	params->queue           = queue;
+//	params->proc_msg		= proc_msg;
+//	params->proc_param		= proc_param;
 	params->stop 			= false;
 
 	int result = pthread_create(&params->thread_id, NULL, read_msgs, params);
@@ -305,11 +335,13 @@ void write_tlog(int fd, mavlink_message_t *msg)
 	uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 	uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
 
+	/*
 	for (int ii=0; ii<6; ii++)
 	{
 		printf("%2X ", buf[ii]);
 	}
 	printf("\n");
+	*/
 
 	// write the msg to the log file
 	write(fd, buf, len);

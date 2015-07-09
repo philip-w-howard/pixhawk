@@ -19,12 +19,14 @@ void send_request_data_stream(queue_t *dest, uint8_t sysid, uint8_t compid,
 		uint16_t req_message_rate, uint8_t start_stop);
 
 void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
-		void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param);
+		queue_t *queue);
+		//void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param);
 
 void *start_message_write_thread(int fd, queue_t *queue);
 
 void stop_message_thread(void *p);
 
 void write_tlog(int fd, mavlink_message_t *msg);
+void queue_msg(queue_t *dest, mavlink_message_t *msg);
 
 #endif /* MAVLINKIF_H_ */

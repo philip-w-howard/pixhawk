@@ -8,7 +8,9 @@
 #ifndef WIFI_H_
 #define WIFI_H_
 
-int open_wifi(int portno);
+#include "queue.h"
+
+int listen_to_wifi(int portno, queue_t *wifi_q, queue_t *agdrone_q);
 
 
 

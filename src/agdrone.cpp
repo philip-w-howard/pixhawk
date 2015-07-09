@@ -7,6 +7,8 @@
 #include <iostream>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include<signal.h>
 
 #include <mraa/gpio.hpp>
 #include "mavlink/ardupilotmega/mavlink.h"
@@ -22,46 +24,10 @@
 // ACM0 is USBA hardwire
 static char portname[] = "/dev/ttyACM0";
 
-/*
-void proc_msg(mavlink_message_t *msg, void *param)
+static void signal_handler(int sig)
 {
-	switch(msg.msgid)
-	{
-	case MAVLINK_MSG_ID_HEARTBEAT:
-		mavlink_heartbeat_t heartbeat;
-		mavlink_msg_heartbeat_decode(&msg, &heartbeat);
-		printf("%d Heartbeat: %d %d %d %d %d\n", num_msgs,
-				heartbeat.type,
-				heartbeat.autopilot,
-				heartbeat.base_mode,
-				heartbeat.system_status,
-				heartbeat.mavlink_version);
-		break;
-	default:
-		printf("%d msg: %02X %02X\n", num_msgs, msg.msgid, mavlink_msg_get_send_buffer_length(&msg)-8);
-		break;
-	}
-	// CRC is at beginning of msg, we need to print it at the end
-	write(logfile, &msg.magic,
-			mavlink_msg_get_send_buffer_length(&msg) - sizeof(msg.checksum));
-	write(logfile, &msg.checksum, sizeof(msg.checksum));
-
-	//				if (num_msgs == 1) send_param_request_list(pixhawk, logfile);
+	printf("**************************** Received signal %d\n", sig);
 }
-*/
-
-volatile int Total_Msgs = 0;
-
-void forward_msg(mavlink_message_t *msg, void *param)
-{
-	int fd = *(int *)param;
-
-	write_tlog(fd, msg);
-
-	Total_Msgs++;
-	printf("Total msgs: %d\n", Total_Msgs);
-}
-
 int main()
 {
 	// check that we are running on Galileo or Edison
@@ -73,19 +39,37 @@ int main()
 
 	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
 
-	/*
-	printf("waiting for connection on port 2002\n");
-	int wifi = open_wifi(2002);
-	if (wifi <= 0)
+	if (signal(SIGPIPE, signal_handler) == SIG_ERR)
 	{
-	    printf("Failed to open wifi connection\n");
-	    return -1;
+	    printf("\ncan't catch SIGPIPE\n");
 	}
-	*/
 
-//	mraa::Gpio* led = new mraa::Gpio(13, true, false);
-//	bool led_on = false;
+	queue_t *pixhawk_q = queue_create();
+	if (pixhawk_q == NULL)
+	{
+		perror("Error opening pixhawk queue");
+		return -1;
+	}
 
+	queue_t *mission_q = queue_create();
+	if (mission_q == NULL)
+	{
+		perror("Error opening mission planner queue");
+		return -1;
+	}
+
+	queue_t *agdrone_q = queue_create();
+	if (agdrone_q == NULL)
+	{
+		perror("Error opening mission planner queue");
+		return -1;
+	}
+
+	if (listen_to_wifi(2002, mission_q, agdrone_q) != 0)
+	{
+		perror("Unable to establish WiFi connection");
+		return -1;
+	}
 
 	int pixhawk = open_pixhawk(portname);
 	if (pixhawk < 0)
@@ -101,23 +85,46 @@ int main()
 		return -1;
 	}
 
-	queue_t *pixhawk_q = queue_create();
-	if (pixhawk_q == NULL)
-	{
-		perror("Error opening pixhawk queue");
-		return -1;
-	}
-
-	pix_proc_msg_t pix_msg;
-	pix_msg.pixhawk_fd = pixhawk;
-	pix_msg.log_fd = logfile;
-	pix_msg.send_q = pixhawk_q;
-	pix_msg.num_msgs = 0;
-
 	//start_message_thread(0, wifi, 200, forward_msg, &pixhawk);
-	start_message_read_thread(1, pixhawk, 1, pixhawk_proc_msg, &pix_msg);
+	start_message_read_thread(1, pixhawk, 1, agdrone_q);
 	start_message_write_thread(pixhawk, pixhawk_q);
 
+	int num_msgs = 0;
+	mavlink_message_t *msg;
+
+	while (1)
+	{
+		msg = (mavlink_message_t *)queue_remove(agdrone_q);
+		if (msg != NULL)
+		{
+			write_tlog(logfile, msg);
+
+			if (msg->sysid == 1)
+				queue_msg(mission_q, msg);
+			else
+				queue_msg(pixhawk_q, msg);
+
+			free(msg);
+		}
+
+		if (num_msgs % 1000 == 0) printf("processed %d msgs\n", num_msgs);
+		num_msgs++;
+
+		if (num_msgs == 100)
+		{
+			send_param_request_list(pixhawk_q, EDISON_SYSID, EDISON_COMPID);
+		}
+		if (num_msgs == 1000 || num_msgs == 1005)
+		{
+			send_request_data_stream(pixhawk_q, EDISON_SYSID, EDISON_COMPID,
+					1, 1, MAV_DATA_STREAM_POSITION, 1, 1);
+		}
+		if (num_msgs == 2000 || num_msgs == 2005)
+		{
+			send_request_data_stream(pixhawk_q, EDISON_SYSID, EDISON_COMPID,
+					1, 1, MAV_DATA_STREAM_POSITION, 20, 1);
+		}
+	}
 //	send_change_operator_control(pixhawk, logfile);
 //	send_change_operator_control(pixhawk, logfile);
 
@@ -172,9 +179,6 @@ int main()
 	send_request_data_stream(pixhawk, logfile,
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 	*/
-
-	while (Total_Msgs < 500)
-	{}
 
 	//close(wifi);
 	close(logfile);

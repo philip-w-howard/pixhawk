@@ -11,6 +11,9 @@
 #include "mavlink/ardupilotmega/mavlink.h"
 #include "queue.h"
 
+#define EDISON_SYSID		0x41
+#define EDISON_COMPID		0x41
+
 typedef struct pixhawk_proc_msg_s
 {
 	int pixhawk_fd;
