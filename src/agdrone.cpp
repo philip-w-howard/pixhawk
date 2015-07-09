@@ -24,10 +24,13 @@
 // ACM0 is USBA hardwire
 static char portname[] = "/dev/ttyACM0";
 
+/*
 static void signal_handler(int sig)
 {
 	printf("**************************** Received signal %d\n", sig);
 }
+*/
+
 int main()
 {
 	// check that we are running on Galileo or Edison
@@ -39,9 +42,11 @@ int main()
 
 	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
 
-	if (signal(SIGPIPE, signal_handler) == SIG_ERR)
+
+	//if (signal(SIGPIPE, signal_handler) == SIG_ERR)
+	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
 	{
-	    printf("\ncan't catch SIGPIPE\n");
+	    printf("\ncan't ignore SIGPIPE\n");
 	}
 
 	queue_t *pixhawk_q = queue_create();
@@ -107,9 +112,9 @@ int main()
 			free(msg);
 		}
 
-		if (num_msgs % 1000 == 0) printf("processed %d msgs\n", num_msgs);
 		num_msgs++;
-
+		if (num_msgs % 1000 == 0) printf("processed %d msgs\n", num_msgs);
+/*
 		if (num_msgs == 100)
 		{
 			send_param_request_list(pixhawk_q, EDISON_SYSID, EDISON_COMPID);
@@ -124,11 +129,15 @@ int main()
 			send_request_data_stream(pixhawk_q, EDISON_SYSID, EDISON_COMPID,
 					1, 1, MAV_DATA_STREAM_POSITION, 20, 1);
 		}
+*/
 	}
-//	send_change_operator_control(pixhawk, logfile);
-//	send_change_operator_control(pixhawk, logfile);
 
-//	send_param_request_list(pixhawk, logfile);
+	close(logfile);
+	close(pixhawk);
+	std::cout << "Exiting\n";
+	return MRAA_SUCCESS;
+}
+
 
 /*
 	int target_system = 1;
@@ -179,12 +188,3 @@ int main()
 	send_request_data_stream(pixhawk, logfile,
 			target_system, target_component, req_stream_id, req_message_rate, start_stop);
 	*/
-
-	//close(wifi);
-	close(logfile);
-	close(pixhawk);
-	std::cout << "Exiting\n";
-	return MRAA_SUCCESS;
-}
-
-

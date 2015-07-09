@@ -1,0 +1,13 @@
+TODO:
+
+Pixhawk:
+
+Count missing messages
+Report missing messages
+
+Bridge:
+
+Decode messages
+report messages, not bytes
+Add CLEAR button
+Generate "radio quality" messages

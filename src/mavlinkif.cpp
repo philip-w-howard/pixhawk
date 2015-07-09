@@ -16,9 +16,6 @@
 #include "mavlinkif.h"
 #include "queue.h"
 
-static const uint8_t MY_SYSID = 0xFF;
-static const uint8_t MY_COMPID = 0xBE;
-
 static inline void byte_swap_8(void *dst, void *src)
 {
 	char *c_dst = (char *)dst;
@@ -54,7 +51,7 @@ void send_msg(int fd, mavlink_message_t *msg)
 	// Copy the message to the send buffer
 	uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
 
-	// Send the message to the pixhawk and to the log file
+	// Send the message to destination
 	bytes = write(fd, buf, len);
 	if (bytes != len) printf("Failed to write msg: %d %d %d\n", fd, bytes, len);
 }
@@ -143,6 +140,7 @@ typedef struct
 	//void (*proc_msg)(mavlink_message_t *msg, void *param);
 	//void *proc_param;
 	pthread_t thread_id;
+	uint64_t recv_errors;
 	bool stop;
 } msg_params_t;
 
@@ -174,13 +172,9 @@ static void *read_msgs(void *p)
 				num_msgs++;
 
 				queue_msg(params->queue, &msg);
-				//printf("Read msg from %d\n", params->fd);
-				//params->proc_msg(&msg, params->proc_param);
+				params->recv_errors += status.packet_rx_drop_count;
 			}
 		}
-
-		// Update global packet drops counter
-		//packet_drops += status.packet_rx_drop_count;
 	}
 
 	printf("Done reading from %d\n", params->fd);
@@ -209,8 +203,7 @@ static void *write_msgs(void *p)
 			len = mavlink_msg_to_send_buffer(buf, msg);
 			free(msg);
 
-			// write the msg to the log file
-			//printf("writing to %d %d\n", params->fd, len);
+			// write the msg to the destination
 			size = write(params->fd, buf, len);
 			if (size < 0)
 			{
@@ -231,9 +224,8 @@ static void *write_msgs(void *p)
 	return NULL;
 }
 
-void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
-		queue_t *queue)
-//		void (*proc_msg)(mavlink_message_t *msg, void *param), void *proc_param)
+void *start_message_read_thread
+		(int mav_channel, int fd, int bytes_at_time, queue_t *queue)
 {
 	msg_params_t *params;
 
@@ -250,8 +242,6 @@ void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
 	params->fd     			= fd;
 	params->bytes_at_time	= bytes_at_time;
 	params->queue           = queue;
-//	params->proc_msg		= proc_msg;
-//	params->proc_param		= proc_param;
 	params->stop 			= false;
 
 	int result = pthread_create(&params->thread_id, NULL, read_msgs, params);
