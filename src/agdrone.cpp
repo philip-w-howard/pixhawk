@@ -70,7 +70,8 @@ int main()
 		return -1;
 	}
 
-	if (listen_to_wifi(2002, mission_q, agdrone_q) != 0)
+	if (start_wifi("192.168.2.5", 2002, mission_q, agdrone_q) != 0)
+	//if (listen_to_wifi(2002, mission_q, agdrone_q) != 0)
 	{
 		perror("Unable to establish WiFi connection");
 		return -1;

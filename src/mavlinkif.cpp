@@ -295,6 +295,14 @@ void stop_message_thread(void *p)
 	free(params);
 }
 
+void wait_for_message_thread(void *p)
+{
+	msg_params_t *params = (msg_params_t *)p;
+
+	pthread_join(params->thread_id, NULL);
+	free(params);
+}
+
 void write_tlog(int fd, mavlink_message_t *msg)
 {
 	static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;

@@ -25,6 +25,7 @@ void *start_message_read_thread(int mav_channel, int fd, int bytes_at_time,
 void *start_message_write_thread(int fd, queue_t *queue);
 
 void stop_message_thread(void *p);
+void wait_for_message_thread(void *p);
 
 void write_tlog(int fd, mavlink_message_t *msg);
 void queue_msg(queue_t *dest, mavlink_message_t *msg);

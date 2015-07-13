@@ -12,7 +12,9 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <pthread.h>
+#include <assert.h>
 
 #include "queue.h"
 #include "mavlinkif.h"
@@ -23,6 +25,14 @@ typedef struct
 	queue_t *agdrone_q;
 	int     sockfd;
 } wifi_param_t;
+
+typedef struct
+{
+	char host[256];
+	int portno;
+	queue_t *wifi_q;
+	queue_t *agdrone_q;
+} wifi_client_param_t;
 
 static void *wifi_listener(void *param)
 {
@@ -93,3 +103,63 @@ int listen_to_wifi(int portno, queue_t *wifi_q, queue_t *agdrone_q)
 }
 
 
+static void *connect_to_wifi(void *p)
+{
+	wifi_client_param_t *params = (wifi_client_param_t *)p;
+
+	while (1)
+	{
+		int sockfd;
+		struct sockaddr_in serv_addr;
+		struct hostent *server;
+
+		sockfd = socket(AF_INET, SOCK_STREAM, 0);
+		if (sockfd < 0)
+			perror("ERROR opening socket");
+		server = gethostbyname(params->host);
+		if (server == NULL)
+		{
+			fprintf(stderr,"ERROR, no such host: %s\n", params->host);
+			return (void *)-1;
+		}
+		bzero((char *) &serv_addr, sizeof(serv_addr));
+		serv_addr.sin_family = AF_INET;
+		bcopy((char *)server->h_addr,
+			 (char *)&serv_addr.sin_addr.s_addr,
+			 server->h_length);
+		serv_addr.sin_port = htons(params->portno);
+		if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+		{
+			perror("ERROR connecting");
+			return (void *)-1;
+		}
+
+		void *reader, *writer;
+
+		reader = start_message_read_thread(0, sockfd, 200, params->agdrone_q);
+		writer = start_message_write_thread(sockfd, params->wifi_q);
+
+		// wait for reader to finish then make a new connection
+		wait_for_message_thread(reader);
+		stop_message_thread(writer);
+	}
+
+    return NULL;
+}
+
+int start_wifi(char *host, int portno, queue_t *wifi_q, queue_t *agdrone_q)
+{
+    pthread_t thread_id;
+    wifi_client_param_t *param;
+    param = (wifi_client_param_t *)malloc(sizeof(wifi_client_param_t));
+    assert(param != NULL);
+    bzero((char *) param, sizeof(wifi_client_param_t));
+	strcpy(param->host, host);
+	param->portno = portno;
+	param->wifi_q = wifi_q;
+	param->agdrone_q = agdrone_q;
+
+	pthread_create(&thread_id, NULL, connect_to_wifi, param);
+
+	return 0;
+}
