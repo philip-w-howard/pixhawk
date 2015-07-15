@@ -164,6 +164,8 @@ static void *read_msgs(void *p)
 		length = read(params->fd, input_buff, params->bytes_at_time);
 		if (length < 0 && errno != EINTR) break;
 
+		if (length < 0) perror("Error reading file descriptor");
+
 		for (int ii=0; ii<length; ii++)
 		{
 			// Try to get a new message

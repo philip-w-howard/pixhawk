@@ -17,12 +17,15 @@
 #include "wifi.h"
 #include "mavlinkif.h"
 
-// Ports:
-// MFD2 is console
-// MFD1 is UART
-// USB0 is USBA radio
-// ACM0 is USBA hardwire
-static char portname[] = "/dev/ttyACM0";
+#define USB_PORT "/dev/ttyACM0"
+#define RADIO_PORT "/dev/ttyUSB0"
+#define UART_PORT "/dev/ttyMFD1"
+#define CONSOLE_PORT "/dev/MFD2"
+
+static char portname[256] = USB_PORT;
+static bool Wifi_Server = true;
+static int Wifi_Port = 2002;
+static char Wifi_Addr[256] = "192.168.2.5";
 
 /*
 static void signal_handler(int sig)
@@ -31,7 +34,41 @@ static void signal_handler(int sig)
 }
 */
 
-int main()
+static void process_args(int argc, char **argv)
+{
+	for (int ii=1; ii<argc; ii++)
+	{
+		if (strncmp(argv[ii], "-port:", 6) == 0)
+		{
+			if (strcmp(&argv[ii][6], "usb") == 0)
+				strcpy(portname, USB_PORT);
+			else if (strcmp(&argv[ii][6], "radio") == 0)
+				strcpy(portname, RADIO_PORT);
+			else if (strcmp(&argv[ii][6], "uart") == 0)
+				strcpy(portname, UART_PORT);
+			else
+			{
+				fprintf(stderr, "Unknown port: %s\n", &argv[ii][6]);
+				exit(-1);
+			}
+		}
+		else if (strcmp(argv[ii], "-wifi:client") == 0)
+			Wifi_Server = false;
+		else if (strcmp(argv[ii], "-wifi:server") == 0)
+			Wifi_Server = true;
+		else if (strncmp(argv[ii], "-wifiport:", 10) == 0)
+			Wifi_Port = atoi(&argv[ii][10]);
+		else if (strncmp(argv[ii], "-wifiaddr:", 10) == 0)
+			strcpy(Wifi_Addr, &argv[ii][10]);
+		else
+		{
+			fprintf(stderr, "Unknown argument: %s\n", argv[ii]);
+			exit(-1);
+		}
+	}
+}
+
+int main(int argc, char **argv)
 {
 	// check that we are running on Galileo or Edison
 	mraa_platform_t platform = mraa_get_platform_type();
@@ -42,6 +79,7 @@ int main()
 
 	std::cout << "pixhawk interface running on " << mraa_get_version() << std::endl;
 
+    process_args(argc, argv);
 
 	//if (signal(SIGPIPE, signal_handler) == SIG_ERR)
 	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
@@ -70,11 +108,19 @@ int main()
 		return -1;
 	}
 
-	if (start_wifi("192.168.2.5", 2002, mission_q, agdrone_q) != 0)
-	//if (listen_to_wifi(2002, mission_q, agdrone_q) != 0)
+	if (Wifi_Server)
 	{
-		perror("Unable to establish WiFi connection");
-		return -1;
+		if (listen_to_wifi(Wifi_Port, mission_q, agdrone_q) != 0)
+		{
+			perror("Unable to establish WiFi connection");
+			return -1;
+		}
+	} else {
+		if (start_wifi(Wifi_Addr, Wifi_Port, mission_q, agdrone_q) != 0)
+		{
+			perror("Unable to establish WiFi connection");
+			return -1;
+		}
 	}
 
 	int pixhawk = open_pixhawk(portname);
@@ -114,6 +160,8 @@ int main()
 		}
 
 		num_msgs++;
+		if (num_msgs < 100 && num_msgs % 10 == 0) printf("processed %d msgs\n", num_msgs);
+		if (num_msgs < 1000 && num_msgs % 100 == 0) printf("processed %d msgs\n", num_msgs);
 		if (num_msgs % 1000 == 0) printf("processed %d msgs\n", num_msgs);
 /*
 		if (num_msgs == 100)
@@ -135,7 +183,7 @@ int main()
 
 	close(logfile);
 	close(pixhawk);
-	std::cout << "Exiting\n";
+	std::cout <<  "Exiting\n";
 	return MRAA_SUCCESS;
 }
 
